@@ -35,6 +35,8 @@ export default function ProjectDetailPage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [taskForm, setTaskForm] = useState({ name: '', estimatedHours: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<number[]>([]);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
 
   const canManage = user && (user.role === 'admin' || (user.role === 'manager' && project?.manager_id === user.id));
 
@@ -116,6 +118,53 @@ export default function ProjectDetailPage() {
       loadData();
     } catch (err: any) {
       console.error('Reject error:', err);
+    }
+  };
+
+  const pendingEntries = timeEntries.filter((e) => e.status === 'pending');
+  const allPendingSelected = pendingEntries.length > 0 && pendingEntries.every((e) => selectedEntryIds.includes(e.id));
+
+  const toggleEntrySelection = (entryId: number) => {
+    setSelectedEntryIds((prev) =>
+      prev.includes(entryId) ? prev.filter((id) => id !== entryId) : [...prev, entryId]
+    );
+  };
+
+  const toggleSelectAllPending = () => {
+    if (allPendingSelected) {
+      setSelectedEntryIds([]);
+    } else {
+      setSelectedEntryIds(pendingEntries.map((e) => e.id));
+    }
+  };
+
+  const handleBatchApprove = async () => {
+    if (selectedEntryIds.length === 0 || !id) return;
+    if (!confirm(`确定要通过选中的 ${selectedEntryIds.length} 条工时记录吗？`)) return;
+    setBatchSubmitting(true);
+    try {
+      await api.timeEntries.batchApprove(selectedEntryIds, Number(id));
+      setSelectedEntryIds([]);
+      loadData();
+    } catch (err: any) {
+      console.error('Batch approve error:', err);
+    } finally {
+      setBatchSubmitting(false);
+    }
+  };
+
+  const handleBatchReject = async () => {
+    if (selectedEntryIds.length === 0 || !id) return;
+    if (!confirm(`确定要驳回选中的 ${selectedEntryIds.length} 条工时记录吗？`)) return;
+    setBatchSubmitting(true);
+    try {
+      await api.timeEntries.batchReject(selectedEntryIds, Number(id));
+      setSelectedEntryIds([]);
+      loadData();
+    } catch (err: any) {
+      console.error('Batch reject error:', err);
+    } finally {
+      setBatchSubmitting(false);
     }
   };
 
@@ -307,19 +356,57 @@ export default function ProjectDetailPage() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-800">任务列表</h3>
-              {canManage && (
-                <button
-                  onClick={() => {
-                    setEditingTask(null);
-                    setTaskForm({ name: '', estimatedHours: '' });
-                    setShowTaskModal(true);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  添加任务
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                {canManage && pendingEntries.length > 0 && (
+                  <div className="flex items-center gap-3 mr-2">
+                    <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={allPendingSelected}
+                        onChange={toggleSelectAllPending}
+                        className="w-4 h-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
+                      />
+                      <span>全选待审批</span>
+                    </label>
+                    {selectedEntryIds.length > 0 && (
+                      <>
+                        <span className="text-sm text-slate-500">
+                          已选 {selectedEntryIds.length} 条
+                        </span>
+                        <button
+                          onClick={handleBatchApprove}
+                          disabled={batchSubmitting}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 hover:bg-green-200 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <Check className="w-4 h-4" />
+                          批量通过
+                        </button>
+                        <button
+                          onClick={handleBatchReject}
+                          disabled={batchSubmitting}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <X className="w-4 h-4" />
+                          批量驳回
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+                {canManage && (
+                  <button
+                    onClick={() => {
+                      setEditingTask(null);
+                      setTaskForm({ name: '', estimatedHours: '' });
+                      setShowTaskModal(true);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    添加任务
+                  </button>
+                )}
+              </div>
             </div>
 
             {tasks.length === 0 ? (
@@ -402,6 +489,14 @@ export default function ProjectDetailPage() {
                             <div className="divide-y divide-slate-200">
                               {taskEntries.map((entry) => (
                                 <div key={entry.id} className="p-4 flex items-center gap-4">
+                                  {canManage && entry.status === 'pending' && (
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedEntryIds.includes(entry.id)}
+                                      onChange={() => toggleEntrySelection(entry.id)}
+                                      className="w-4 h-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500 flex-shrink-0"
+                                    />
+                                  )}
                                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-400 to-slate-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                                     {entry.user_name?.charAt(0)}
                                   </div>

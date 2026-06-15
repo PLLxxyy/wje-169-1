@@ -117,6 +117,16 @@ export const api = {
       request(`/time-entries/${id}/approve`, { method: 'POST' }),
     reject: (id: number) =>
       request(`/time-entries/${id}/reject`, { method: 'POST' }),
+    batchApprove: (ids: number[], projectId: number) =>
+      request('/time-entries/batch-approve', {
+        method: 'POST',
+        body: JSON.stringify({ ids, projectId }),
+      }),
+    batchReject: (ids: number[], projectId: number) =>
+      request('/time-entries/batch-reject', {
+        method: 'POST',
+        body: JSON.stringify({ ids, projectId }),
+      }),
   },
 
   stats: {
