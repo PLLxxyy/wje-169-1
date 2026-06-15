@@ -248,27 +248,35 @@ router.post('/:id/reject', authMiddleware, requireProjectManagerOrAdmin, (req: A
 
 router.post('/batch-approve', authMiddleware, requireProjectManagerOrAdmin, (req: AuthRequest, res: Response): void => {
   try {
-    const { ids } = req.body as { ids: number[]; projectId: number };
+    const { ids, projectId } = req.body as { ids: number[]; projectId: number };
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       res.status(400).json({ success: false, error: '请选择要审批的工时记录' });
       return;
     }
 
+    if (!projectId) {
+      res.status(400).json({ success: false, error: '缺少项目ID' });
+      return;
+    }
+
     const placeholders = ids.map(() => '?').join(',');
-    const existing = db.prepare(`SELECT * FROM time_entries WHERE id IN (${placeholders})`).all(...ids) as TimeEntry[];
-    if (existing.length === 0) {
-      res.status(404).json({ success: false, error: '工时记录不存在' });
+    const params = [...ids, Number(projectId)];
+    const pendingEntries = db.prepare(`
+      SELECT * FROM time_entries
+      WHERE id IN (${placeholders})
+        AND project_id = ?
+        AND status = 'pending'
+    `).all(...params) as TimeEntry[];
+
+    if (pendingEntries.length === 0) {
+      res.status(400).json({ success: false, error: '没有可审批的待审批工时记录' });
       return;
     }
 
-    const validIds = existing.filter((e) => e.status === 'pending').map((e) => e.id);
-    if (validIds.length === 0) {
-      res.status(400).json({ success: false, error: '没有待审批的工时记录' });
-      return;
-    }
-
+    const validIds = pendingEntries.map((e) => e.id);
     const validPlaceholders = validIds.map(() => '?').join(',');
+
     db.prepare(`
       UPDATE time_entries
       SET status = 'approved', approved_at = CURRENT_TIMESTAMP
@@ -293,27 +301,35 @@ router.post('/batch-approve', authMiddleware, requireProjectManagerOrAdmin, (req
 
 router.post('/batch-reject', authMiddleware, requireProjectManagerOrAdmin, (req: AuthRequest, res: Response): void => {
   try {
-    const { ids } = req.body as { ids: number[]; projectId: number };
+    const { ids, projectId } = req.body as { ids: number[]; projectId: number };
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       res.status(400).json({ success: false, error: '请选择要驳回的工时记录' });
       return;
     }
 
+    if (!projectId) {
+      res.status(400).json({ success: false, error: '缺少项目ID' });
+      return;
+    }
+
     const placeholders = ids.map(() => '?').join(',');
-    const existing = db.prepare(`SELECT * FROM time_entries WHERE id IN (${placeholders})`).all(...ids) as TimeEntry[];
-    if (existing.length === 0) {
-      res.status(404).json({ success: false, error: '工时记录不存在' });
+    const params = [...ids, Number(projectId)];
+    const pendingEntries = db.prepare(`
+      SELECT * FROM time_entries
+      WHERE id IN (${placeholders})
+        AND project_id = ?
+        AND status = 'pending'
+    `).all(...params) as TimeEntry[];
+
+    if (pendingEntries.length === 0) {
+      res.status(400).json({ success: false, error: '没有可驳回的待审批工时记录' });
       return;
     }
 
-    const validIds = existing.filter((e) => e.status === 'pending').map((e) => e.id);
-    if (validIds.length === 0) {
-      res.status(400).json({ success: false, error: '没有待审批的工时记录' });
-      return;
-    }
-
+    const validIds = pendingEntries.map((e) => e.id);
     const validPlaceholders = validIds.map(() => '?').join(',');
+
     db.prepare(`
       UPDATE time_entries
       SET status = 'rejected', approved_at = NULL
